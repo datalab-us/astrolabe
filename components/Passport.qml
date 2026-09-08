@@ -4,8 +4,9 @@ import qs.Commons
 import "../Model.js" as Model
 
 // Right-side detail drawer for the selected node: identity, status,
-// relationships, and safe read-only actions (logs / describe / port-forward
-// all open in a floating terminal; nothing mutates the cluster).
+// relationships, and actions. Logs / describe render in the overlay's
+// output viewer; port-forward is managed (status pill up top, stop here);
+// only "Open in terminal" (inside the viewer) spawns a terminal.
 Rectangle {
   id: root
 
@@ -13,9 +14,14 @@ Rectangle {
   property var inEdges: []      // edges where node is `to`
   property var outEdges: []     // edges where node is `from`
   property int warnCount: 0
+  property bool pfActive: false // a port-forward is running (overlay-owned)
+  property string pfKey: ""     // node key the active forward belongs to
+  property string copiedMsg: "" // transient "Copied ✓" feedback
 
   signal runCommand(string cmd)
   signal copyText(string value)
+  signal showOutput(string title, var cmdArgs, string terminalCmd)
+  signal togglePortForward()
   signal closed()
 
   visible: node !== null
@@ -172,12 +178,21 @@ Rectangle {
     Rectangle { width: parent.width; height: 1; color: Color.menu.border; opacity: 0.5 }
 
     Text {
-      text: "ACTIONS (OPEN IN TERMINAL)"
+      text: "ACTIONS"
       color: Color.muted
       font.family: Style.font.family
       font.pixelSize: Style.font.caption
       font.bold: true
       font.letterSpacing: 1
+    }
+
+    Text {
+      width: parent.width
+      visible: root.copiedMsg !== ""
+      text: root.copiedMsg
+      color: "#34D399"
+      font.family: Style.font.family
+      font.pixelSize: Style.font.bodySmall
     }
 
     GridLayout {
@@ -187,10 +202,15 @@ Rectangle {
       rowSpacing: 8
       Repeater {
         model: [
-          { label: "Logs", cmd: "logs" },
-          { label: "Describe", cmd: "describe" },
-          { label: "Port-fwd", cmd: "portfwd" },
-          { label: "Copy cmd", cmd: "copy" }
+          { label: "Logs", cmd: "logs", enabled: root.canShowLogs(),
+            tip: "Show pod logs inside the plugin" },
+          { label: "Describe", cmd: "describe", enabled: root.node !== null,
+            tip: "Show kubectl describe output inside the plugin" },
+          { label: root.isPfForNode() ? "Stop fwd" : "Port-fwd", cmd: "portfwd",
+            enabled: root.canPortForward(),
+            tip: "Forward localhost:8080 to this target's service port" },
+          { label: "Copy describe", cmd: "copy", enabled: root.node !== null,
+            tip: "Copy the kubectl describe command to the clipboard" }
         ]
         Rectangle {
           required property var modelData
@@ -199,7 +219,8 @@ Rectangle {
           radius: Style.cornerRadius > 0 ? 8 : 0
           color: "transparent"
           border.width: 1
-          border.color: Color.accent
+          border.color: modelData.enabled ? Color.accent : Color.menu.border
+          opacity: modelData.enabled ? 1.0 : 0.45
           Text {
             anchors.centerIn: parent
             text: parent.modelData.label
@@ -209,15 +230,72 @@ Rectangle {
           }
           MouseArea {
             anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
+            cursorShape: parent.modelData.enabled ? Qt.PointingHandCursor : Qt.ForbiddenCursor
             onClicked: {
-              if (parent.modelData.cmd === "copy") root.copyText(actionCommand("describe"))
-              else root.runCommand(actionCommand(parent.modelData.cmd))
+              if (!parent.modelData.enabled) return
+              var c = parent.modelData.cmd
+              if (c === "logs") root.requestLogs()
+              else if (c === "describe") root.requestDescribe()
+              else if (c === "portfwd") root.togglePortForward()
+              else if (c === "copy") root.copyDescribeCommand()
             }
           }
         }
       }
     }
+    Timer {
+      id: copyReset
+      interval: 1500
+      onTriggered: root.copiedMsg = ""
+    }
+  }
+
+  function nodeKey() {
+    if (!node) return ""
+    return node.kind + "/" + (node.namespace || "") + "/" + node.name
+  }
+
+  function canShowLogs() {
+    return node && node.kind === "Pod"
+  }
+
+  function canPortForward() {
+    return node && (node.kind === "Service" || node.kind === "Pod")
+  }
+
+  function isPfForNode() {
+    return root.pfActive && root.pfKey !== "" && root.pfKey === nodeKey()
+  }
+
+  function singleContainer() {
+    return (node && node.detail.containers && node.detail.containers.length === 1)
+      ? node.detail.containers[0] : ""
+  }
+
+  function displayName() {
+    if (!node) return ""
+    return node.kind + " " + (node.namespace ? node.namespace + "/" : "") + node.name
+  }
+
+  function requestLogs() {
+    if (!canShowLogs()) return
+    var c = singleContainer()
+    var args = Model.logsArgs(node.namespace, node.name, c)
+    root.showOutput("Logs: " + displayName(), args,
+      Model.logsCommand(node.namespace, node.name, c))
+  }
+
+  function requestDescribe() {
+    if (!node) return
+    var args = Model.describeArgs(node.kind, node.namespace, node.name)
+    root.showOutput("Describe: " + displayName(), args, actionCommand("describe"))
+  }
+
+  function copyDescribeCommand() {
+    if (!node) return
+    root.copyText(actionCommand("describe"))
+    root.copiedMsg = "Copied describe command ✓"
+    copyReset.restart()
   }
 
   // Builds the kubectl invocation for an action. Port-forward targets the

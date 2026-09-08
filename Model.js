@@ -233,6 +233,43 @@ function portForwardCommand(ns, target, localPort, remotePort) {
     " " + Number(localPort) + ":" + Number(remotePort);
 }
 
+// Array-form kubectl invocations for in-process execution (no shell, no
+// quoting). Logs omit `-f` so the process terminates; the terminal fallback
+// keeps following via logsCommand above.
+function logsArgs(ns, pod, container) {
+  var a = ["kubectl", "logs", "-n", String(ns), String(pod), "--tail=200"];
+  if (container) {
+    a.push("-c", String(container));
+  }
+  return a;
+}
+
+function describeArgs(kind, ns, name) {
+  var a = ["kubectl", "describe", String(kind).toLowerCase()];
+  if (ns) {
+    a.push("-n", String(ns));
+  }
+  a.push(String(name));
+  return a;
+}
+
+function portForwardArgs(ns, target, localPort, remotePort) {
+  return ["kubectl", "port-forward", "-n", String(ns), String(target),
+    Number(localPort) + ":" + Number(remotePort)];
+}
+
+// Render a command array as a shell string for display / copy. Words with
+// only safe characters pass through; everything else is Bourne-quoted.
+function argsToString(args) {
+  var out = [];
+  for (var i = 0; i < args.length; i++) {
+    var s = String(args[i]);
+    if (/^[A-Za-z0-9_:@/.\-=+,]+$/.test(s)) out.push(s);
+    else out.push(shellQuote(s));
+  }
+  return out.join(" ");
+}
+
 // Classify a collector failure for the error-state UI.
 function classifyError(exitCode, stderr, stdout) {
   var err = String(stderr || "") + "\n" + String(stdout || "");
@@ -276,6 +313,10 @@ if (typeof module !== "undefined") {
     logsCommand: logsCommand,
     describeCommand: describeCommand,
     portForwardCommand: portForwardCommand,
+    logsArgs: logsArgs,
+    describeArgs: describeArgs,
+    portForwardArgs: portForwardArgs,
+    argsToString: argsToString,
     classifyError: classifyError,
     splitMixedList: splitMixedList,
     emptyBundle: emptyBundle

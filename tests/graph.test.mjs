@@ -129,3 +129,22 @@ describe("summarize", () => {
     assert.ok(s.bad >= 1);
   });
 });
+
+describe("containerPorts", () => {
+  it("collects container ports for port-forward defaults", () => {
+    const pod = { spec: { containers: [
+      { name: "web", ports: [{ containerPort: 5678 }, { containerPort: 5678 }] },
+      { name: "side", ports: [{ containerPort: 9090 }] }
+    ], initContainers: [{ name: "init", ports: [{ containerPort: 1234 }] }] } };
+    assert.deepEqual(G.containerPorts(pod), [5678, 9090, 1234]);
+    assert.deepEqual(G.containerPorts({ spec: {} }), []);
+    assert.deepEqual(G.containerPorts({}), []);
+  });
+  it("lands on pod detail nodes", () => {
+    const g = G.buildGraph({ pods: [{ kind: "Pod",
+      metadata: { name: "p", namespace: "demo" },
+      spec: { containers: [{ name: "web", ports: [{ containerPort: 5678 }] }] },
+      status: { phase: "Running" } }] });
+    assert.deepEqual(g.nodes[0].detail.ports, [5678]);
+  });
+});

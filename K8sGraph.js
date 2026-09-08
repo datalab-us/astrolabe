@@ -159,7 +159,7 @@ function buildGraph(bundle) {
     var pn = addNode("Pod", p, podStatusOf(p),
       { phase: (p.status && p.status.phase) || "", restarts: restarts,
         node: (p.spec && p.spec.nodeName) || "", age: pm.creationTimestamp,
-        containers: containerNames(p) });
+        containers: containerNames(p), ports: containerPorts(p) });
     podByNsName[(pm.namespace || "") + "/" + (pm.name || "")] = pn;
   }
 
@@ -322,6 +322,25 @@ function containerNames(pod) {
   return out;
 }
 
+// First-seen containerPort numbers across regular + init containers.
+// Used to pick a sensible default remote port for port-forwarding.
+function containerPorts(pod) {
+  var out = [];
+  var lists = [pod.spec && pod.spec.containers, pod.spec && pod.spec.initContainers];
+  for (var i = 0; i < lists.length; i++) {
+    if (!Array.isArray(lists[i])) continue;
+    for (var j = 0; j < lists[i].length; j++) {
+      var ports = lists[i][j].ports;
+      if (!Array.isArray(ports)) continue;
+      for (var k = 0; k < ports.length; k++) {
+        var n = Number(ports[k].containerPort);
+        if (!isNaN(n) && n > 0 && out.indexOf(n) === -1) out.push(n);
+      }
+    }
+  }
+  return out;
+}
+
 // BFS reachability. dir "down" follows from->to, "up" follows to->from.
 // Returns {ids:[...], links:edgeCount, maxHops}.
 function reach(graph, startId, dir) {
@@ -434,6 +453,7 @@ if (typeof module !== "undefined") {
     nodeId: nodeId,
     buildGraph: buildGraph,
     containerNames: containerNames,
+    containerPorts: containerPorts,
     reach: reach,
     searchNodes: searchNodes,
     layout: layout,

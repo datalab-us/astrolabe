@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
 import "components"
@@ -8,8 +9,9 @@ import "Model.js" as Model
 import "K8sGraph.js" as K8sGraph
 
 // Fullscreen topology overlay: deterministic column graph of workloads +
-// network edges, with search, upstream/downstream reach, and a detail
-// passport with safe terminal actions. Summoned from the bar widget via
+// network edges, with search, upstream/downstream reach, a detail passport,
+// an in-plugin output viewer (logs / describe), and a managed port-forward
+// with a toolbar status pill. Summoned from the bar widget via
 // `omarchy-shell shell toggle <id>`.
 Item {
   id: root
@@ -38,6 +40,22 @@ Item {
   property string loadDetail: ""
   property string updatedAt: ""
 
+  // In-plugin output viewer (logs / describe output, no terminal).
+  property string outputTitle: ""
+  property var outputCmdArgs: []
+  property string outputTerminalCmd: ""
+  property string outputBody: ""
+  property bool outputBusy: false
+  property bool outputVisible: false
+  property string outputCopiedMsg: ""
+
+  // Managed port-forward (one at a time, owned by the overlay).
+  property bool pfActive: false
+  property string pfKey: ""
+  property string pfLabel: ""
+  property string pfError: ""
+  property bool pfStopping: false
+
   readonly property bool hasHighlight: reachMode !== "none" || searchHits.length > 0
   readonly property int nodeCap: 800
 
@@ -60,7 +78,11 @@ Item {
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
-  function close() { root.opened = false }
+  function close() {
+    if (root.pfActive) root.stopPortForward()
+    root.hideOutput()
+    root.opened = false
+  }
   function toggle() { if (root.opened) root.close(); else root.open("{}") }
 
   // Introspection for live testing via `omarchy-shell shell call <id> debugState`.
@@ -310,6 +332,79 @@ Item {
     Quickshell.execDetached(["bash", "-c", "printf %s " + Model.shellQuote(value) + " | wl-copy"])
   }
 
+  // --- in-plugin output viewer (logs / describe) ---------------------------
+  function showOutput(title, cmdArgs, terminalCmd) {
+    if (!cmdArgs || cmdArgs.length === 0) return
+    root.outputTitle = String(title || "Output")
+    root.outputCmdArgs = cmdArgs
+    root.outputTerminalCmd = String(terminalCmd || Model.argsToString(cmdArgs))
+    root.outputBody = ""
+    root.outputBusy = true
+    root.outputVisible = true
+    root.outputCopiedMsg = ""
+    outputProc.command = cmdArgs
+    outputProc.running = true
+  }
+
+  function hideOutput() {
+    root.outputVisible = false
+    root.outputBusy = false
+    root.outputCopiedMsg = ""
+  }
+
+  function copyOutputText(value, what) {
+    if (!value) return
+    root.copyToClipboard(value)
+    root.outputCopiedMsg = what + " copied ✓"
+    outputCopyReset.restart()
+  }
+
+  // --- managed port-forward -------------------------------------------------
+  // One forward at a time: localhost:8080 -> the target's service port.
+  // Status shows in the toolbar pill while connected; stopping is one click
+  // (✕). The forward is stopped when the overlay closes so no orphan kubectl
+  // is left behind.
+  function pfRemotePort(n) {
+    if (n && n.detail) {
+      var p = n.detail.ports
+      if (typeof p === "string") {
+        var first = parseInt(String(p).split(",")[0], 10)
+        if (!isNaN(first) && first > 0) return first
+      } else if (Array.isArray(p) && p.length > 0) {
+        var v = parseInt(p[0], 10)
+        if (!isNaN(v) && v > 0) return v
+      }
+    }
+    return 80
+  }
+
+  function togglePortForward() {
+    if (root.pfActive) {
+      root.stopPortForward()
+      return
+    }
+    var n = root.selectedNode()
+    if (!n || (n.kind !== "Service" && n.kind !== "Pod")) return
+    var tgt = n.kind === "Service" ? "svc/" + n.name : n.name
+    var remote = root.pfRemotePort(n)
+    root.pfStopping = false
+    root.pfKey = n.kind + "/" + (n.namespace || "") + "/" + n.name
+    root.pfLabel = "localhost:8080 → " + tgt + " (" + n.namespace + ":" + remote + ")"
+    root.pfError = ""
+    pfProc.command = Model.portForwardArgs(n.namespace, tgt, 8080, remote)
+    pfProc.running = true
+  }
+
+  function stopPortForward() {
+    root.pfStopping = true
+    root.pfActive = false
+    root.pfKey = ""
+    root.pfLabel = ""
+    root.pfError = ""
+    if (pfProc.running) pfProc.running = false
+    else root.pfStopping = false
+  }
+
   // --- collectors ---------------------------------------------------------
   K8sPoller {
     id: fullPoller
@@ -335,6 +430,66 @@ Item {
     active: root.opened
     onFinished: function(text, code) {
       if (code === 0) root.context = String(text || "").trim()
+    }
+  }
+
+  // One-shot runner for the output viewer (logs / describe).
+  Process {
+    id: outputProc
+    stdout: StdioCollector {
+      id: outputOut
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: outputErr
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      root.outputBusy = false
+      var out = String(outputOut.text || "")
+      var err = String(outputErr.text || "").trim()
+      if (exitCode !== 0 && out.trim() === "") {
+        root.outputBody = "exit " + exitCode + (err !== "" ? "\n" + err : "")
+      } else if (err !== "") {
+        root.outputBody = out + "\n--- stderr ---\n" + err
+      } else {
+        root.outputBody = out === "" ? "(no output)" : out
+      }
+    }
+  }
+
+  Timer {
+    id: outputCopyReset
+    interval: 1500
+    onTriggered: root.outputCopiedMsg = ""
+  }
+
+  // Long-running kubectl port-forward owned by the overlay.
+  Process {
+    id: pfProc
+    stdout: StdioCollector {
+      id: pfOut
+      waitForEnd: false
+    }
+    stderr: StdioCollector {
+      id: pfErr
+      waitForEnd: false
+    }
+    onStarted: {
+      root.pfActive = true
+      root.pfError = ""
+    }
+    onExited: function(exitCode) {
+      if (root.pfActive && !root.pfStopping) {
+        var e = String(pfErr.text || "").trim().split("\n").filter(function(l) {
+          return l.trim() !== ""
+        }).slice(-2).join("\n")
+        root.pfError = e !== "" ? e : "port-forward exited (" + exitCode + ")"
+      }
+      root.pfActive = false
+      root.pfKey = ""
+      root.pfLabel = ""
+      root.pfStopping = false
     }
   }
 
@@ -375,7 +530,8 @@ Item {
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
           if (event.key === Qt.Key_Escape) {
-            if (root.searchText !== "") { searchBar.clear(); event.accepted = true }
+            if (root.outputVisible) { root.hideOutput(); event.accepted = true }
+            else if (root.searchText !== "") { searchBar.clear(); event.accepted = true }
             else if (root.selectedId !== "") { root.selectedId = ""; root.reachMode = "none"; root.updateHighlight(); event.accepted = true }
             else { root.close(); event.accepted = true }
           } else if (event.key === Qt.Key_Slash && !searchBar.hasFocus) {
@@ -426,6 +582,50 @@ Item {
             font.pixelSize: Style.font.body
           }
           Item { Layout.fillWidth: true; Layout.preferredHeight: 1 }
+          // Port-forward status pill: visible while connected, ✕ disconnects.
+          Rectangle {
+            visible: root.pfActive
+            Layout.alignment: Qt.AlignVCenter
+            Layout.preferredHeight: 28
+            Layout.preferredWidth: pfPillRow.implicitWidth + 20
+            radius: Style.cornerRadius > 0 ? 14 : 0
+            color: "#064E3B"
+            border.width: 1
+            border.color: Color.accent
+            Row {
+              id: pfPillRow
+              anchors.centerIn: parent
+              spacing: 8
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "⇄ " + root.pfLabel
+                color: "#D1FAE5"
+                font.family: Style.font.family
+                font.pixelSize: Style.font.bodySmall
+              }
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "✕"
+                color: "#D1FAE5"
+                font.pixelSize: 12
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.stopPortForward()
+                }
+              }
+            }
+          }
+          Text {
+            visible: !root.pfActive && root.pfError !== ""
+            Layout.alignment: Qt.AlignVCenter
+            Layout.maximumWidth: 420
+            text: "⚠ port-fwd: " + root.pfError.split("\n")[0]
+            color: "#FB7185"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
+          }
           SearchBar {
             id: searchBar
             Layout.preferredWidth: 260
@@ -670,8 +870,14 @@ Item {
             node: root.selectedNode()
             inEdges: root.relatedEdges("in")
             outEdges: root.relatedEdges("out")
+            pfActive: root.pfActive
+            pfKey: root.pfKey
             onRunCommand: function(cmd) { root.runInTerminal(cmd) }
             onCopyText: function(value) { root.copyToClipboard(value) }
+            onShowOutput: function(title, cmdArgs, terminalCmd) {
+              root.showOutput(title, cmdArgs, terminalCmd)
+            }
+            onTogglePortForward: root.togglePortForward()
             onClosed: { root.selectedId = ""; root.reachMode = "none"; root.updateHighlight() }
           }
         }
@@ -704,6 +910,127 @@ Item {
             color: Color.muted
             font.family: Style.font.family
             font.pixelSize: Style.font.bodySmall
+          }
+        }
+      }
+
+      // In-plugin output viewer: floats above graph + passport, shows
+      // logs / describe output without leaving the overlay.
+      Rectangle {
+        id: outputCard
+        visible: root.outputVisible
+        anchors.fill: parent
+        anchors.margins: 48
+        radius: Style.cornerRadius > 0 ? 14 : 0
+        color: Color.menu.background
+        border.width: 1
+        border.color: Color.menu.border
+
+        ColumnLayout {
+          anchors.fill: parent
+          anchors.margins: 16
+          spacing: 10
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: 10
+            Text {
+              Layout.fillWidth: true
+              text: root.outputTitle + (root.outputBusy ? "  …" : "")
+              color: Color.menu.text
+              font.family: Style.font.family
+              font.pixelSize: Style.font.title
+              font.bold: true
+              elide: Text.ElideRight
+            }
+            Text {
+              text: "✕"
+              color: Color.muted
+              font.pixelSize: 14
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.hideOutput()
+              }
+            }
+          }
+
+          Text {
+            Layout.fillWidth: true
+            text: "$ " + root.outputTerminalCmd
+            color: Color.muted
+            font.family: "monospace"
+            font.pixelSize: Style.font.bodySmall
+            elide: Text.ElideRight
+          }
+
+          Flickable {
+            id: outputScroll
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            contentWidth: width
+            contentHeight: outputBodyText.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            Text {
+              id: outputBodyText
+              width: parent.width
+              text: root.outputBusy ? "Running…" : root.outputBody
+              color: Color.menu.text
+              font.family: "monospace"
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
+              textFormat: Text.PlainText
+            }
+          }
+
+          Text {
+            Layout.fillWidth: true
+            visible: root.outputCopiedMsg !== ""
+            text: root.outputCopiedMsg
+            color: "#34D399"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.bodySmall
+          }
+
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            Repeater {
+              model: [
+                { label: "Copy output", cmd: "out" },
+                { label: "Copy command", cmd: "cmd" },
+                { label: "Open in terminal", cmd: "term" },
+                { label: "Close", cmd: "close" }
+              ]
+              Rectangle {
+                required property var modelData
+                Layout.fillWidth: true
+                Layout.preferredHeight: 32
+                radius: Style.cornerRadius > 0 ? 8 : 0
+                color: "transparent"
+                border.width: 1
+                border.color: Color.accent
+                Text {
+                  anchors.centerIn: parent
+                  text: parent.modelData.label
+                  color: Color.menu.text
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                }
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var c = parent.modelData.cmd
+                    if (c === "out") root.copyOutputText(root.outputBody, "Output")
+                    else if (c === "cmd") root.copyOutputText(root.outputTerminalCmd, "Command")
+                    else if (c === "term") root.runInTerminal(root.outputTerminalCmd)
+                    else if (c === "close") root.hideOutput()
+                  }
+                }
+              }
+            }
           }
         }
       }

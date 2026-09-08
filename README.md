@@ -14,8 +14,9 @@ omarchy plugin add https://github.com/datalab-us/astrolabe.git --enable
 
 Requires `kubectl` and a working kubeconfig. The plugin is **read-only**:
 it runs `kubectl get … -o json` and `kubectl config current-context`.
-Logs / describe / port-forward open in a floating terminal (`xdg-terminal-exec`);
-nothing mutates the cluster from the shell process.
+Logs / describe render inside the overlay (with Copy + Open-in-terminal
+fallback via `xdg-terminal-exec`); port-forward runs managed while the
+overlay is open. Nothing mutates the cluster from the shell process.
 
 ## Usage
 
@@ -23,7 +24,11 @@ nothing mutates the cluster from the shell process.
 - Overlay: namespace cycler (`ns: all`), kind filter chips, search (`/`),
   click a node for the detail passport, `u`/`d` for upstream/downstream
   reach, `+`/`-`/`0` zoom, `R` refresh, `Esc` back/close.
-- Passport actions: Logs, Describe, Port-fwd (open in terminal), Copy cmd.
+- Passport actions: Logs / Describe (shown inside the overlay, with Copy
+  output, Copy command, Open in terminal), Port-fwd (managed
+  `localhost:8080` → the target's service port, with a toolbar status pill
+  — click ✕ to disconnect), Copy describe (copies the `kubectl describe`
+  command).
 - Summon with an optional namespace payload (empty payload reopens with
   the current filters):
   `omarchy-shell shell summon io.github.astrolabe.k8s-topo '{"namespace":"demo"}'`

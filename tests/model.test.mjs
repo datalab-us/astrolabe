@@ -81,6 +81,24 @@ describe("commands", () => {
     assert.ok(Model.describeCommand("Pod", "demo", "web-x").includes("kubectl describe"));
     assert.ok(Model.portForwardCommand("demo", "svc/web", 8080, 80).includes("8080:80"));
   });
+  it("builds argv arrays for in-process execution", () => {
+    assert.deepEqual(Model.logsArgs("demo", "web-x", ""),
+      ["kubectl", "logs", "-n", "demo", "web-x", "--tail=200"]);
+    assert.deepEqual(Model.logsArgs("demo", "web-x", "web"),
+      ["kubectl", "logs", "-n", "demo", "web-x", "--tail=200", "-c", "web"]);
+    assert.deepEqual(Model.describeArgs("Pod", "demo", "web-x"),
+      ["kubectl", "describe", "pod", "-n", "demo", "web-x"]);
+    assert.deepEqual(Model.describeArgs("Node", "", "n0"),
+      ["kubectl", "describe", "node", "n0"]);
+    assert.deepEqual(Model.portForwardArgs("demo", "svc/web", 8080, 80),
+      ["kubectl", "port-forward", "-n", "demo", "svc/web", "8080:80"]);
+  });
+  it("renders argv arrays as shell strings", () => {
+    assert.equal(Model.argsToString(["kubectl", "logs", "-n", "demo", "web-x", "--tail=200"]),
+      "kubectl logs -n demo web-x --tail=200");
+    assert.equal(Model.argsToString(["kubectl", "logs", "-n", "my ns", "web-x"]),
+      "kubectl logs -n 'my ns' web-x");
+  });
 });
 
 describe("splitMixedList", () => {
