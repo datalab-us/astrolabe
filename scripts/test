@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run Astrolabe K8s pure-JS tests (no cluster needed).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+exec node --test tests/

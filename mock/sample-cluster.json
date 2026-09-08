@@ -1,0 +1,378 @@
+{
+  "namespaces": {
+    "apiVersion": "v1",
+    "kind": "List",
+    "items": [
+      {
+        "metadata": {
+          "name": "demo"
+        },
+        "kind": "Namespace"
+      }
+    ]
+  },
+  "deployments": {
+    "apiVersion": "apps/v1",
+    "kind": "DeploymentList",
+    "items": [
+      {
+        "metadata": {
+          "name": "web",
+          "namespace": "demo",
+          "uid": "uid-deploy-web",
+          "creationTimestamp": "2026-08-20T10:00:00Z"
+        },
+        "spec": {
+          "replicas": 2,
+          "selector": {
+            "matchLabels": {
+              "app": "web"
+            }
+          }
+        },
+        "status": {
+          "availableReplicas": 2,
+          "readyReplicas": 2
+        },
+        "kind": "Deployment"
+      }
+    ]
+  },
+  "replicasets": {
+    "apiVersion": "apps/v1",
+    "kind": "ReplicaSetList",
+    "items": [
+      {
+        "metadata": {
+          "name": "web-7d4f8b",
+          "namespace": "demo",
+          "uid": "uid-rs-web",
+          "creationTimestamp": "2026-08-20T10:01:00Z",
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "Deployment",
+              "name": "web",
+              "uid": "uid-deploy-web"
+            }
+          ]
+        },
+        "spec": {
+          "replicas": 2
+        },
+        "status": {
+          "readyReplicas": 2
+        },
+        "kind": "ReplicaSet"
+      }
+    ]
+  },
+  "statefulsets": {
+    "apiVersion": "apps/v1",
+    "kind": "StatefulSetList",
+    "items": []
+  },
+  "daemonsets": {
+    "apiVersion": "apps/v1",
+    "kind": "DaemonSetList",
+    "items": []
+  },
+  "jobs": {
+    "apiVersion": "batch/v1",
+    "kind": "JobList",
+    "items": []
+  },
+  "pods": {
+    "apiVersion": "v1",
+    "kind": "PodList",
+    "items": [
+      {
+        "metadata": {
+          "name": "web-7d4f8b-x9k2m",
+          "namespace": "demo",
+          "uid": "uid-pod-1",
+          "labels": {
+            "app": "web"
+          },
+          "creationTimestamp": "2026-08-20T10:02:00Z",
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "web-7d4f8b",
+              "uid": "uid-rs-web"
+            }
+          ]
+        },
+        "spec": {
+          "nodeName": "node-1",
+          "containers": [
+            {
+              "name": "web",
+              "image": "web:1.2"
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running",
+          "containerStatuses": [
+            {
+              "name": "web",
+              "ready": true,
+              "restartCount": 0,
+              "state": {
+                "running": {}
+              }
+            }
+          ]
+        },
+        "kind": "Pod"
+      },
+      {
+        "metadata": {
+          "name": "web-7d4f8b-z4q1n",
+          "namespace": "demo",
+          "uid": "uid-pod-2",
+          "labels": {
+            "app": "web"
+          },
+          "creationTimestamp": "2026-08-20T10:02:00Z",
+          "ownerReferences": [
+            {
+              "apiVersion": "apps/v1",
+              "kind": "ReplicaSet",
+              "name": "web-7d4f8b",
+              "uid": "uid-rs-web"
+            }
+          ]
+        },
+        "spec": {
+          "nodeName": "node-1",
+          "containers": [
+            {
+              "name": "web",
+              "image": "web:1.2"
+            }
+          ]
+        },
+        "status": {
+          "phase": "Running",
+          "containerStatuses": [
+            {
+              "name": "web",
+              "ready": false,
+              "restartCount": 5,
+              "state": {
+                "waiting": {
+                  "reason": "CrashLoopBackOff"
+                }
+              }
+            }
+          ]
+        },
+        "kind": "Pod"
+      },
+      {
+        "metadata": {
+          "name": "lonely-abc",
+          "namespace": "demo",
+          "uid": "uid-pod-3",
+          "labels": {
+            "app": "lonely"
+          },
+          "creationTimestamp": "2026-09-01T08:00:00Z"
+        },
+        "spec": {
+          "nodeName": "node-1",
+          "containers": [
+            {
+              "name": "lonely",
+              "image": "lonely:0.1"
+            }
+          ]
+        },
+        "status": {
+          "phase": "Pending",
+          "containerStatuses": [
+            {
+              "name": "lonely",
+              "ready": false,
+              "restartCount": 0,
+              "state": {
+                "waiting": {
+                  "reason": "ContainerCreating"
+                }
+              }
+            }
+          ]
+        },
+        "kind": "Pod"
+      }
+    ]
+  },
+  "services": {
+    "apiVersion": "v1",
+    "kind": "ServiceList",
+    "items": [
+      {
+        "metadata": {
+          "name": "web",
+          "namespace": "demo",
+          "uid": "uid-svc-web"
+        },
+        "spec": {
+          "type": "ClusterIP",
+          "clusterIP": "10.0.0.42",
+          "selector": {
+            "app": "web"
+          },
+          "ports": [
+            {
+              "port": 80
+            }
+          ]
+        },
+        "kind": "Service"
+      },
+      {
+        "metadata": {
+          "name": "stale",
+          "namespace": "demo",
+          "uid": "uid-svc-stale"
+        },
+        "spec": {
+          "type": "ClusterIP",
+          "clusterIP": "10.0.0.99",
+          "selector": {
+            "app": "gone"
+          },
+          "ports": [
+            {
+              "port": 80
+            }
+          ]
+        },
+        "kind": "Service"
+      }
+    ]
+  },
+  "endpointslices": {
+    "apiVersion": "discovery.k8s.io/v1",
+    "kind": "EndpointSliceList",
+    "items": [
+      {
+        "metadata": {
+          "name": "web-abc",
+          "namespace": "demo",
+          "labels": {
+            "kubernetes.io/service-name": "web"
+          }
+        },
+        "endpoints": [
+          {
+            "conditions": {
+              "ready": true
+            },
+            "targetRef": {
+              "kind": "Pod",
+              "name": "web-7d4f8b-x9k2m",
+              "namespace": "demo",
+              "uid": "uid-pod-1"
+            }
+          },
+          {
+            "conditions": {
+              "ready": false
+            },
+            "targetRef": {
+              "kind": "Pod",
+              "name": "web-7d4f8b-z4q1n",
+              "namespace": "demo",
+              "uid": "uid-pod-2"
+            }
+          }
+        ],
+        "kind": "EndpointSlice"
+      }
+    ]
+  },
+  "ingresses": {
+    "apiVersion": "networking.k8s.io/v1",
+    "kind": "IngressList",
+    "items": [
+      {
+        "metadata": {
+          "name": "web",
+          "namespace": "demo"
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "web.example.com",
+              "http": {
+                "paths": [
+                  {
+                    "path": "/",
+                    "backend": {
+                      "service": {
+                        "name": "web"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "kind": "Ingress"
+      },
+      {
+        "metadata": {
+          "name": "broken",
+          "namespace": "demo"
+        },
+        "spec": {
+          "rules": [
+            {
+              "host": "old.example.com",
+              "http": {
+                "paths": [
+                  {
+                    "path": "/",
+                    "backend": {
+                      "service": {
+                        "name": "missing"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "kind": "Ingress"
+      }
+    ]
+  },
+  "nodes": {
+    "apiVersion": "v1",
+    "kind": "NodeList",
+    "items": [
+      {
+        "metadata": {
+          "name": "node-1",
+          "uid": "uid-node-1"
+        },
+        "status": {
+          "conditions": [
+            {
+              "type": "Ready",
+              "status": "True"
+            }
+          ]
+        },
+        "kind": "Node"
+      }
+    ]
+  }
+}

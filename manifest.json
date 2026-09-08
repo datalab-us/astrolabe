@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.astrolabe.k8s-topo",
+  "name": "Astrolabe K8s",
+  "version": "0.1.0",
+  "author": "Astrolabe",
+  "license": "ELv2",
+  "description": "Kubernetes workload + network topology: bar status with a fullscreen graph overlay.",
+  "kinds": ["bar-widget", "overlay"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "barWidget": "BarWidget.qml",
+    "overlay": "Overlay.qml"
+  },
+  "barWidget": {
+    "displayName": "K8s",
+    "description": "Kubernetes cluster status and topology",
+    "category": "Dev",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
