@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.astrolabe.k8s-topo",
   "name": "Astrolabe K8s",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "author": "Astrolabe",
   "license": "ELv2",
   "description": "Kubernetes workload + network topology: bar status with a fullscreen graph overlay.",

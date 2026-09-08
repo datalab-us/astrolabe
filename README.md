@@ -28,6 +28,12 @@ nothing mutates the cluster from the shell process.
   the current filters):
   `omarchy-shell shell summon io.github.astrolabe.k8s-topo '{"namespace":"demo"}'`
 
+## Configure
+
+```sh
+omarchy bar move io.github.astrolabe.k8s-topo --section right
+```
+
 ## Layout
 
 ```
