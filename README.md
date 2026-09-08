@@ -20,7 +20,7 @@ overlay is open. Nothing mutates the cluster from the shell process.
 
 ## Usage
 
-- Bar pill shows `⎈ <context> <ready>/<total>` pods. Click to open the overlay.
+- Bar pill shows `⎈ Astrolabe <ready>/<total>` pods (context in the tooltip + overlay header). Click to open the overlay.
 - Overlay: namespace cycler (`ns: all`), kind filter chips, search (`/`),
   click a node for the detail passport, `u`/`d` for upstream/downstream
   reach, `+`/`-`/`0` zoom, `R` refresh, `Esc` back/close.

@@ -21,7 +21,7 @@ BarWidget {
     if (root.probeError === "no-kubectl") return "k8s: no kubectl"
     if (root.probeError !== "") return "k8s: offline"
     if (root.context === "") return "k8s: …"
-    return "⎈ " + root.context + " " + root.podsReady + "/" + root.podsTotal
+    return "⎈ Astrolabe " + root.podsReady + "/" + root.podsTotal
   }
 
   function toggleOverlay() {
@@ -76,9 +76,10 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.labelText
-    tooltipText: root.podsBad > 0
-      ? (root.podsBad + " pod(s) unhealthy — open topology")
-      : "Open Kubernetes topology"
+    tooltipText: "Astrolabe"
+      + (root.context !== "" ? " · " + root.context : "")
+      + (root.podsBad > 0 ? " — " + root.podsBad + " pod(s) unhealthy — open topology"
+                          : " — open Kubernetes topology")
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.LeftButton) root.toggleOverlay()
     }
